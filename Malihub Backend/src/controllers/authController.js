@@ -1,6 +1,7 @@
 const bcrypt = require("bcrypt");
 const jwt = require("jsonwebtoken");
 const prisma = require("./config/prisma");
+const { ensureDefaultCategories } = require("./config/defaultCategories");
 
 const publicUser = ({ password_hash, ...user }) => user;
 const validEmail = (email) =>
@@ -66,6 +67,7 @@ exports.register = async (req, res) => {
           balance: 0,
         },
       });
+      await ensureDefaultCategories(tx, createdUser.user_id);
       return createdUser;
     });
 

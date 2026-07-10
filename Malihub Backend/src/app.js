@@ -14,6 +14,9 @@ const userRoutes = require("./routes/userRoute");
 const accountRoutes = require("./routes/accountRoute");
 const transactionRoutes = require("./routes/transactionRoute");
 const goalRoutes = require("./routes/goalRoute");
+const categoryRoutes = require("./routes/categoryRoute");
+const budgetRoutes = require("./routes/budgetRoute");
+const notificationRoutes = require("./routes/notificationRoute");
 
 const app = express();
 app.use(cors());
@@ -24,6 +27,9 @@ app.use("/api/users", userRoutes);
 app.use("/api/accounts", accountRoutes);
 app.use("/api/transactions", transactionRoutes);
 app.use("/api/goals", goalRoutes);
+app.use("/api/categories", categoryRoutes);
+app.use("/api/budgets", budgetRoutes);
+app.use("/api/notifications", notificationRoutes);
 
 app.get("/", (req, res) => {
   res.send("Malihub Backend is running");
