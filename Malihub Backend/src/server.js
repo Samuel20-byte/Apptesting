@@ -18,9 +18,13 @@ app.use(express.json());
 const authRoutes = require("./routes/authRoute");
 const userRoutes = require("./routes/userRoute");
 const accountRoutes = require("./routes/accountRoute");
+const transactionRoutes = require("./routes/transactionRoute");
+const goalRoutes = require("./routes/goalRoute");
 app.use("/api/auth", authRoutes);
 app.use("/api/users", userRoutes);
 app.use("/api/accounts", accountRoutes);
+app.use("/api/transactions", transactionRoutes);
+app.use("/api/goals", goalRoutes);
 
 app.get("/", (req, res) => {
     res.send("Malihub Backend is running");
