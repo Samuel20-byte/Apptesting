@@ -13,7 +13,13 @@
 ///   (e.g. https://malihub-backend-production.up.railway.app/api).
 class ApiConfig {
   // TODO: swap this for your Railway URL once the backend is deployed.
-  static const String baseUrl = 'http://192.168.0.15/api';
+  // Default for Android emulators. For a USB-debugged physical phone run:
+  // adb reverse tcp:5000 tcp:5000
+  // flutter run --dart-define=API_BASE_URL=http://127.0.0.1:5000/api
+  static const String baseUrl = String.fromEnvironment(
+    'API_BASE_URL',
+    defaultValue: 'http://10.0.2.2:5000/api',
+  );
 
   static const Duration timeout = Duration(seconds: 15);
 }
