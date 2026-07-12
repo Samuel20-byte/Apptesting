@@ -1,11 +1,11 @@
 const defaultCategories = [
-  { category_name: "Salary", icon: "payments" },
-  { category_name: "Freelance", icon: "work" },
-  { category_name: "Groceries", icon: "shopping_cart" },
-  { category_name: "Transport", icon: "directions_car" },
-  { category_name: "Rent & Bills", icon: "home" },
-  { category_name: "Savings", icon: "savings" },
-  { category_name: "Entertainment", icon: "movie" },
+  { category_name: "Salary", icon: "payments", category_type: "income" },
+  { category_name: "Freelance", icon: "work", category_type: "income" },
+  { category_name: "Groceries", icon: "shopping_cart", category_type: "expense" },
+  { category_name: "Transport", icon: "directions_car", category_type: "expense" },
+  { category_name: "Rent & Bills", icon: "home", category_type: "expense" },
+  { category_name: "Savings", icon: "savings", category_type: "expense" },
+  { category_name: "Entertainment", icon: "movie", category_type: "expense" },
 ];
 
 async function ensureDefaultCategories(prisma, userId) {

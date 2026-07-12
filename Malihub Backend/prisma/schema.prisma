@@ -38,13 +38,14 @@ model budgets {
 }
 
 model categories {
-  category_id   Int            @id @default(autoincrement())
+  category_id   Int                       @id @default(autoincrement())
   user_id       Int
-  category_name String         @db.VarChar(50)
-  icon          String?        @db.VarChar(50)
-  is_default    Boolean        @default(false)
+  category_name String                    @db.VarChar(50)
+  icon          String?                   @db.VarChar(50)
+  category_type categories_category_type  @default(expense)
+  is_default    Boolean                   @default(false)
   budgets       budgets[]
-  users         users          @relation(fields: [user_id], references: [user_id], onDelete: Cascade, onUpdate: NoAction, map: "fk_category_user")
+  users         users                     @relation(fields: [user_id], references: [user_id], onDelete: Cascade, onUpdate: NoAction, map: "fk_category_user")
   transactions  transactions[]
 
   @@unique([user_id, category_name], map: "uq_user_category")
@@ -129,4 +130,9 @@ enum budgets_period_type {
 enum transactions_transaction_type {
   debit
   credit
+}
+
+enum categories_category_type {
+  income
+  expense
 }

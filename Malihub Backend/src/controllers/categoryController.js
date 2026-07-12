@@ -17,18 +17,22 @@ exports.list = async (req, res) => {
 
 exports.create = async (req, res) => {
   try {
-    const { category_name, icon } = req.body;
+    const { category_name, icon, category_type } = req.body;
     if (typeof category_name !== "string" || !category_name.trim() || category_name.trim().length > 50) {
       return res.status(400).json({ message: "Category name is required and must be 50 characters or fewer" });
     }
     if (icon != null && (typeof icon !== "string" || icon.length > 50)) {
       return res.status(400).json({ message: "Icon must be 50 characters or fewer" });
     }
+    if (category_type !== "income" && category_type !== "expense") {
+      return res.status(400).json({ message: "category_type is required and must be 'income' or 'expense'" });
+    }
     const category = await prisma.categories.create({
       data: {
         user_id: req.auth.user_id,
         category_name: category_name.trim(),
         icon: icon?.trim() || null,
+        category_type,
       },
     });
     res.status(201).json(category);
