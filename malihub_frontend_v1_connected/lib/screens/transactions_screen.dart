@@ -15,10 +15,10 @@ import 'transaction_detail_screen.dart';
 /// Transactions screen: Add Income / Add Expense / History.
 ///
 /// Note on categories: the schema has a single `categories` table shared
-/// across income and expense (the 5 defaults seeded at registration mix
-/// both — e.g. "Salary" alongside "Groceries"). Both tabs below use the
-/// same category list rather than maintaining a separate income-sources
-/// list, to stay consistent with that schema.
+/// across income and expense, now distinguished by a `category_type`
+/// field ('income' or 'expense'). Both tabs fetch the same full list once,
+/// then each form filters down to only the categories matching its own
+/// type — see `_buildForm` below.
 class TransactionsScreen extends StatefulWidget {
   const TransactionsScreen({super.key});
 
@@ -192,7 +192,7 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
     return _TransactionForm(
       key: ValueKey(isIncome),
       isIncome: isIncome,
-      categories: _categories,
+      categories: _categories.where((c) => c.isIncome == isIncome).toList(),
       onSave: (categoryId, amount, date, note) => _handleSave(
         isIncome: isIncome,
         categoryId: categoryId,

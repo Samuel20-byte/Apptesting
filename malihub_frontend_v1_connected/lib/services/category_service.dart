@@ -9,9 +9,17 @@ class CategoryService {
     return data.map((e) => Category.fromJson(e)).toList();
   }
 
-  Future<Category> createCategory({required String categoryName, String? icon}) async {
+  /// [categoryType] must be 'income' or 'expense' — the backend now
+  /// requires this on every custom category, matching the same rule
+  /// applied to the built-in defaults.
+  Future<Category> createCategory({
+    required String categoryName,
+    required String categoryType,
+    String? icon,
+  }) async {
     final data = await _client.post('/categories', body: {
       'category_name': categoryName,
+      'category_type': categoryType,
       if (icon != null) 'icon': icon,
     });
     return Category.fromJson(data);
