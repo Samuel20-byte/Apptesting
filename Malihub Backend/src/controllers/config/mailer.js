@@ -6,7 +6,10 @@ const nodemailer = require("nodemailer");
 // EMAIL_APP_PASSWORD: the 16-character App Password (NOT the normal Gmail
 // login password) generated from https://myaccount.google.com/apppasswords
 const transporter = nodemailer.createTransport({
-  service: "gmail",
+  host: "smtp.gmail.com",
+  port: 587,
+  secure: false, // STARTTLS — port 465 (implicit SSL) is blocked on some hosts
+  family: 4, // force IPv4 — the IPv6 route appears unreachable on Railway
   auth: {
     user: process.env.EMAIL_USER,
     pass: process.env.EMAIL_APP_PASSWORD,
