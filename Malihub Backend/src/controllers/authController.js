@@ -1,7 +1,9 @@
 const bcrypt = require("bcrypt");
 const jwt = require("jsonwebtoken");
+const crypto = require("crypto");
 const prisma = require("./config/prisma");
 const { ensureDefaultCategories } = require("./config/defaultCategories");
+const { sendResetCodeEmail } = require("./config/mailer");
 
 const publicUser = ({ password_hash, ...user }) => user;
 const validEmail = (email) =>
@@ -107,6 +109,100 @@ exports.login = async (req, res) => {
     res.json({ token: createToken(user), user: publicUser(user) });
   } catch (error) {
     console.error("Login failed:", error.message);
+    res.status(500).json({ message: "Server error" });
+  }
+};
+
+// Generic response used for both the "email exists" and "email doesn't
+// exist" cases below — this stops a bad actor from using this endpoint to
+// discover which emails are registered (same idea already baked into the
+// Flutter screen's copy: "If an account exists for that email...").
+const GENERIC_FORGOT_PASSWORD_MESSAGE =
+  "If an account exists for that email, a reset code has been sent.";
+
+exports.forgotPassword = async (req, res) => {
+  try {
+    const { email } = req.body;
+    if (!validEmail(email)) {
+      return res.status(400).json({ message: "A valid email is required" });
+    }
+
+    const user = await prisma.users.findUnique({
+      where: { email: email.trim().toLowerCase() },
+    });
+
+    // Same response whether or not the user exists — only the internal
+    // behavior differs.
+    if (!user || !user.is_active) {
+      return res.json({ message: GENERIC_FORGOT_PASSWORD_MESSAGE });
+    }
+
+    // 6-digit numeric code, zero-padded (e.g. "004821"), valid for 15 min.
+    const code = crypto.randomInt(0, 1000000).toString().padStart(6, "0");
+    const codeHash = await bcrypt.hash(code, 10);
+    const expiresAt = new Date(Date.now() + 15 * 60 * 1000);
+
+    await prisma.users.update({
+      where: { user_id: user.user_id },
+      data: { reset_code_hash: codeHash, reset_code_expires_at: expiresAt },
+    });
+
+    try {
+      await sendResetCodeEmail(user.email, code);
+    } catch (emailError) {
+      // Log the real reason server-side, but still return the generic
+      // message — the client shouldn't be able to tell email sending
+      // failed vs. the account not existing.
+      console.error("Sending reset code email failed:", emailError.message);
+    }
+
+    res.json({ message: GENERIC_FORGOT_PASSWORD_MESSAGE });
+  } catch (error) {
+    console.error("Forgot password failed:", error.message);
+    res.status(500).json({ message: "Server error" });
+  }
+};
+
+exports.resetPassword = async (req, res) => {
+  try {
+    const { email, code, new_password } = req.body;
+    if (
+      !validEmail(email) ||
+      typeof code !== "string" || !/^\d{6}$/.test(code) ||
+      typeof new_password !== "string" || new_password.length < 8
+    ) {
+      return res.status(400).json({
+        message: "A valid email, 6-digit code, and a new password of at least 8 characters are required",
+      });
+    }
+
+    const user = await prisma.users.findUnique({
+      where: { email: email.trim().toLowerCase() },
+    });
+
+    if (!user || !user.reset_code_hash || !user.reset_code_expires_at) {
+      return res.status(400).json({ message: "Invalid or expired code" });
+    }
+    if (new Date() > user.reset_code_expires_at) {
+      return res.status(400).json({ message: "Invalid or expired code" });
+    }
+    if (!(await bcrypt.compare(code, user.reset_code_hash))) {
+      return res.status(400).json({ message: "Invalid or expired code" });
+    }
+
+    const newHash = await bcrypt.hash(new_password, 10);
+    await prisma.users.update({
+      where: { user_id: user.user_id },
+      data: {
+        password_hash: newHash,
+        reset_code_hash: null,
+        reset_code_expires_at: null,
+      },
+    });
+
+    res.json({ message: "Password updated successfully" });
+  } catch (error) {
+    console.error("Reset password failed:", error.message);
     res.status(500).json({ message: "Server error" });
   }
 };
