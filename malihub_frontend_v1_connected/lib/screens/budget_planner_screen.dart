@@ -10,6 +10,7 @@ import '../services/budget_service.dart';
 import '../services/goal_service.dart';
 import '../services/category_service.dart';
 import '../services/api_exception.dart';
+import '../services/local_notification_service.dart';
 import '../utils/formatters.dart';
 
 /// Budget Planner tab: per-category budgets (from GET /api/budgets, which
@@ -28,12 +29,16 @@ class _BudgetPlannerScreenState extends State<BudgetPlannerScreen> {
   final _budgetService = BudgetService();
   final _goalService = GoalService();
   final _categoryService = CategoryService();
+  final _localNotifications = LocalNotificationService();
+
+  static const double _alertThreshold = 90.0; // percent used
 
   bool _isLoading = true;
   String? _error;
   List<Budget> _budgets = [];
   List<Goal> _goals = [];
   List<Category> _categories = [];
+  final Set<int> _notifiedBudgetIds = {};
 
   @override
   void initState() {
@@ -57,6 +62,7 @@ class _BudgetPlannerScreenState extends State<BudgetPlannerScreen> {
         _categories = categories;
         _isLoading = false;
       });
+      _checkBudgetThresholds(budgets);
     } catch (e) {
       if (!mounted) return;
       setState(() {
@@ -71,12 +77,30 @@ class _BudgetPlannerScreenState extends State<BudgetPlannerScreen> {
     return _categories.where((c) => !used.contains(c.categoryId)).toList();
   }
 
+  void _checkBudgetThresholds(List<Budget> budgets) {
+    for (final b in budgets) {
+      final alreadyNotified = _notifiedBudgetIds.contains(b.budgetId);
+      if (b.percentUsed >= _alertThreshold && !alreadyNotified) {
+        _notifiedBudgetIds.add(b.budgetId);
+        _localNotifications.showNotification(
+          id: b.budgetId,
+          title: 'Budget Alert',
+          body:
+              '${b.categoryName ?? 'A category'} is at ${b.percentUsed.round()}% of its budget.',
+        );
+      } else if (b.percentUsed < _alertThreshold && alreadyNotified) {
+        // Spend dropped back below the threshold (e.g. a transaction was
+        // edited/deleted) — allow a fresh alert if it crosses again later.
+        _notifiedBudgetIds.remove(b.budgetId);
+      }
+    }
+  }
+
   Future<void> _addBudget() async {
     final available = _categoriesWithoutBudget;
     if (available.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('All categories already have a budget.')),
-      );
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+          content: Text('All categories already have a budget.')));
       return;
     }
     Category selected = available.first;
@@ -86,9 +110,8 @@ class _BudgetPlannerScreenState extends State<BudgetPlannerScreen> {
       context: context,
       builder: (context) => StatefulBuilder(
         builder: (context, setDialogState) => AlertDialog(
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(16),
-          ),
+          shape:
+              RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
           title: const Text('Add category budget'),
           content: Column(
             mainAxisSize: MainAxisSize.min,
@@ -96,12 +119,8 @@ class _BudgetPlannerScreenState extends State<BudgetPlannerScreen> {
               DropdownButtonFormField<Category>(
                 initialValue: selected,
                 items: available
-                    .map(
-                      (c) => DropdownMenuItem(
-                        value: c,
-                        child: Text(c.categoryName),
-                      ),
-                    )
+                    .map((c) =>
+                        DropdownMenuItem(value: c, child: Text(c.categoryName)))
                     .toList(),
                 onChanged: (v) =>
                     setDialogState(() => selected = v ?? selected),
@@ -111,24 +130,19 @@ class _BudgetPlannerScreenState extends State<BudgetPlannerScreen> {
                 label: 'Monthly budget (KES)',
                 hint: '0.00',
                 controller: amountController,
-                keyboardType: const TextInputType.numberWithOptions(
-                  decimal: true,
-                ),
+                keyboardType:
+                    const TextInputType.numberWithOptions(decimal: true),
               ),
             ],
           ),
           actions: [
             TextButton(
-              onPressed: () => Navigator.of(context).pop(false),
-              child: const Text(
-                'Cancel',
-                style: TextStyle(color: AppColors.textSecondary),
-              ),
-            ),
+                onPressed: () => Navigator.of(context).pop(false),
+                child: const Text('Cancel',
+                    style: TextStyle(color: AppColors.textSecondary))),
             TextButton(
-              onPressed: () => Navigator.of(context).pop(true),
-              child: const Text('Add'),
-            ),
+                onPressed: () => Navigator.of(context).pop(true),
+                child: const Text('Add')),
           ],
         ),
       ),
@@ -138,9 +152,8 @@ class _BudgetPlannerScreenState extends State<BudgetPlannerScreen> {
     final amount = double.tryParse(amountController.text.trim());
     if (amount == null || amount <= 0) {
       if (!mounted) return;
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(const SnackBar(content: Text('Enter a valid amount')));
+      ScaffoldMessenger.of(context)
+          .showSnackBar(const SnackBar(content: Text('Enter a valid amount')));
       return;
     }
 
@@ -154,21 +167,18 @@ class _BudgetPlannerScreenState extends State<BudgetPlannerScreen> {
       _load();
     } on ApiException catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text(e.message)));
+      ScaffoldMessenger.of(context)
+          .showSnackBar(SnackBar(content: Text(e.message)));
     } catch (_) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text("Couldn't reach the server.")),
-      );
+          const SnackBar(content: Text("Couldn't reach the server.")));
     }
   }
 
   Future<void> _editBudget(Budget budget) async {
-    final amountController = TextEditingController(
-      text: budget.budgetAmount.toStringAsFixed(0),
-    );
+    final amountController =
+        TextEditingController(text: budget.budgetAmount.toStringAsFixed(0));
 
     final saved = await showDialog<bool>(
       context: context,
@@ -187,22 +197,16 @@ class _BudgetPlannerScreenState extends State<BudgetPlannerScreen> {
               Navigator.of(context).pop(false);
               await _confirmDeleteBudget(budget);
             },
-            child: const Text(
-              'Delete',
-              style: TextStyle(color: AppColors.expense),
-            ),
+            child: const Text('Delete',
+                style: TextStyle(color: AppColors.expense)),
           ),
           TextButton(
-            onPressed: () => Navigator.of(context).pop(false),
-            child: const Text(
-              'Cancel',
-              style: TextStyle(color: AppColors.textSecondary),
-            ),
-          ),
+              onPressed: () => Navigator.of(context).pop(false),
+              child: const Text('Cancel',
+                  style: TextStyle(color: AppColors.textSecondary))),
           TextButton(
-            onPressed: () => Navigator.of(context).pop(true),
-            child: const Text('Save'),
-          ),
+              onPressed: () => Navigator.of(context).pop(true),
+              child: const Text('Save')),
         ],
       ),
     );
@@ -211,28 +215,23 @@ class _BudgetPlannerScreenState extends State<BudgetPlannerScreen> {
     final amount = double.tryParse(amountController.text.trim());
     if (amount == null || amount <= 0) {
       if (!mounted) return;
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(const SnackBar(content: Text('Enter a valid amount')));
+      ScaffoldMessenger.of(context)
+          .showSnackBar(const SnackBar(content: Text('Enter a valid amount')));
       return;
     }
 
     try {
       await _budgetService.updateBudget(
-        budgetId: budget.budgetId,
-        budgetAmount: amount,
-      );
+          budgetId: budget.budgetId, budgetAmount: amount);
       _load();
     } on ApiException catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text(e.message)));
+      ScaffoldMessenger.of(context)
+          .showSnackBar(SnackBar(content: Text(e.message)));
     } catch (_) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text("Couldn't reach the server.")),
-      );
+          const SnackBar(content: Text("Couldn't reach the server.")));
     }
   }
 
@@ -243,23 +242,16 @@ class _BudgetPlannerScreenState extends State<BudgetPlannerScreen> {
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
         title: const Text('Remove budget'),
         content: Text(
-          'Remove the budget for ${budget.categoryName ?? 'this category'}?',
-        ),
+            'Remove the budget for ${budget.categoryName ?? 'this category'}?'),
         actions: [
           TextButton(
-            onPressed: () => Navigator.of(context).pop(false),
-            child: const Text(
-              'Cancel',
-              style: TextStyle(color: AppColors.textSecondary),
-            ),
-          ),
+              onPressed: () => Navigator.of(context).pop(false),
+              child: const Text('Cancel',
+                  style: TextStyle(color: AppColors.textSecondary))),
           TextButton(
-            onPressed: () => Navigator.of(context).pop(true),
-            child: const Text(
-              'Remove',
-              style: TextStyle(color: AppColors.expense),
-            ),
-          ),
+              onPressed: () => Navigator.of(context).pop(true),
+              child: const Text('Remove',
+                  style: TextStyle(color: AppColors.expense))),
         ],
       ),
     );
@@ -269,26 +261,22 @@ class _BudgetPlannerScreenState extends State<BudgetPlannerScreen> {
       _load();
     } on ApiException catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text(e.message)));
+      ScaffoldMessenger.of(context)
+          .showSnackBar(SnackBar(content: Text(e.message)));
     } catch (_) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text("Couldn't reach the server.")),
-      );
+          const SnackBar(content: Text("Couldn't reach the server.")));
     }
   }
 
   Future<void> _editGoal() async {
     final hasGoal = _goals.isNotEmpty;
     final goal = hasGoal ? _goals.first : null;
-    final nameController = TextEditingController(
-      text: goal?.goalName ?? 'Savings Goal',
-    );
+    final nameController =
+        TextEditingController(text: goal?.goalName ?? 'Savings Goal');
     final targetController = TextEditingController(
-      text: goal != null ? goal.targetAmount.toStringAsFixed(0) : '',
-    );
+        text: goal != null ? goal.targetAmount.toStringAsFixed(0) : '');
 
     final saved = await showDialog<bool>(
       context: context,
@@ -299,33 +287,27 @@ class _BudgetPlannerScreenState extends State<BudgetPlannerScreen> {
           mainAxisSize: MainAxisSize.min,
           children: [
             AppTextField(
-              label: 'Goal name',
-              hint: 'e.g. Emergency Fund',
-              controller: nameController,
-            ),
+                label: 'Goal name',
+                hint: 'e.g. Emergency Fund',
+                controller: nameController),
             const SizedBox(height: 12),
             AppTextField(
               label: 'Target amount (KES)',
               hint: '0.00',
               controller: targetController,
-              keyboardType: const TextInputType.numberWithOptions(
-                decimal: true,
-              ),
+              keyboardType:
+                  const TextInputType.numberWithOptions(decimal: true),
             ),
           ],
         ),
         actions: [
           TextButton(
-            onPressed: () => Navigator.of(context).pop(false),
-            child: const Text(
-              'Cancel',
-              style: TextStyle(color: AppColors.textSecondary),
-            ),
-          ),
+              onPressed: () => Navigator.of(context).pop(false),
+              child: const Text('Cancel',
+                  style: TextStyle(color: AppColors.textSecondary))),
           TextButton(
-            onPressed: () => Navigator.of(context).pop(true),
-            child: const Text('Save'),
-          ),
+              onPressed: () => Navigator.of(context).pop(true),
+              child: const Text('Save')),
         ],
       ),
     );
@@ -335,35 +317,29 @@ class _BudgetPlannerScreenState extends State<BudgetPlannerScreen> {
     if (target == null || target <= 0) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Enter a valid target amount')),
-      );
+          const SnackBar(content: Text('Enter a valid target amount')));
       return;
     }
 
     try {
       if (hasGoal) {
         await _goalService.updateGoal(
-          goalId: goal!.goalId,
-          goalName: nameController.text.trim(),
-          targetAmount: target,
-        );
+            goalId: goal!.goalId,
+            goalName: nameController.text.trim(),
+            targetAmount: target);
       } else {
         await _goalService.createGoal(
-          goalName: nameController.text.trim(),
-          targetAmount: target,
-        );
+            goalName: nameController.text.trim(), targetAmount: target);
       }
       _load();
     } on ApiException catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text(e.message)));
+      ScaffoldMessenger.of(context)
+          .showSnackBar(SnackBar(content: Text(e.message)));
     } catch (_) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text("Couldn't reach the server.")),
-      );
+          const SnackBar(content: Text("Couldn't reach the server.")));
     }
   }
 
@@ -383,83 +359,63 @@ class _BudgetPlannerScreenState extends State<BudgetPlannerScreen> {
               ? ListView(
                   physics: const AlwaysScrollableScrollPhysics(),
                   children: const [
-                    SizedBox(
-                      height: 300,
-                      child: Center(child: CircularProgressIndicator()),
-                    ),
-                  ],
-                )
+                      SizedBox(
+                          height: 300,
+                          child: Center(child: CircularProgressIndicator())),
+                    ])
               : _error != null
-              ? ListView(
-                  physics: const AlwaysScrollableScrollPhysics(),
-                  children: [
-                    SizedBox(
-                      height: 300,
-                      child: Center(
-                        child: Text(
-                          _error!,
-                          style: const TextStyle(
-                            color: AppColors.textSecondary,
-                          ),
-                        ),
-                      ),
-                    ),
-                  ],
-                )
-              : _buildContent(),
+                  ? ListView(
+                      physics: const AlwaysScrollableScrollPhysics(),
+                      children: [
+                          SizedBox(
+                              height: 300,
+                              child: Center(
+                                  child: Text(_error!,
+                                      style: const TextStyle(
+                                          color: AppColors.textSecondary)))),
+                        ])
+                  : _buildContent(),
         ),
       ),
     );
   }
 
   Widget _buildContent() {
-    final totalBudget = _budgets.fold<double>(
-      0,
-      (sum, b) => sum + b.budgetAmount,
-    );
+    final totalBudget =
+        _budgets.fold<double>(0, (sum, b) => sum + b.budgetAmount);
     final totalSpent = _budgets.fold<double>(0, (sum, b) => sum + b.spent);
-    final overallPercent = totalBudget > 0
-        ? (totalSpent / totalBudget).clamp(0.0, 1.0)
-        : 0.0;
+    final overallPercent =
+        totalBudget > 0 ? (totalSpent / totalBudget).clamp(0.0, 1.0) : 0.0;
     final goal = _goals.isNotEmpty ? _goals.first : null;
 
     return ListView(
       physics: const AlwaysScrollableScrollPhysics(),
       padding: const EdgeInsets.fromLTRB(20, 16, 20, 90),
       children: [
-        const Text(
-          'Budget Planner',
-          style: TextStyle(
-            fontSize: 22,
-            fontWeight: FontWeight.bold,
-            color: AppColors.textPrimary,
-          ),
-        ),
+        const Text('Budget Planner',
+            style: TextStyle(
+                fontSize: 22,
+                fontWeight: FontWeight.bold,
+                color: AppColors.textPrimary)),
         const SizedBox(height: 4),
         const Text('This month across all categories', style: AppText.caption),
         const SizedBox(height: 20),
         Container(
           padding: const EdgeInsets.all(20),
           decoration: BoxDecoration(
-            color: AppColors.primary,
-            borderRadius: BorderRadius.circular(18),
-          ),
+              color: AppColors.primary,
+              borderRadius: BorderRadius.circular(18)),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              const Text(
-                'Monthly Budget',
-                style: TextStyle(color: Colors.white70, fontSize: 13),
-              ),
+              const Text('Monthly Budget',
+                  style: TextStyle(color: Colors.white70, fontSize: 13)),
               const SizedBox(height: 6),
-              Text(
-                formatCurrency(totalBudget),
-                style: const TextStyle(
-                  color: Colors.white,
-                  fontSize: 22,
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
+              Text(formatCurrency(totalBudget),
+                  style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 22,
+                      fontWeight: FontWeight.bold)),
               const SizedBox(height: 14),
               ClipRRect(
                 borderRadius: BorderRadius.circular(6),
@@ -467,16 +423,15 @@ class _BudgetPlannerScreenState extends State<BudgetPlannerScreen> {
                   value: overallPercent,
                   minHeight: 8,
                   backgroundColor: Colors.white24,
-                  valueColor: AlwaysStoppedAnimation(
-                    overallPercent > 0.9 ? AppColors.expense : AppColors.gold,
-                  ),
+                  valueColor: AlwaysStoppedAnimation(overallPercent > 0.9
+                      ? AppColors.expense
+                      : AppColors.gold),
                 ),
               ),
               const SizedBox(height: 8),
               Text(
-                '${formatCurrency(totalSpent)} spent of ${formatCurrency(totalBudget)}',
-                style: const TextStyle(color: Colors.white70, fontSize: 12),
-              ),
+                  '${formatCurrency(totalSpent)} spent of ${formatCurrency(totalBudget)}',
+                  style: const TextStyle(color: Colors.white70, fontSize: 12)),
             ],
           ),
         ),
@@ -486,37 +441,30 @@ class _BudgetPlannerScreenState extends State<BudgetPlannerScreen> {
         if (_budgets.isEmpty)
           const Padding(
             padding: EdgeInsets.symmetric(vertical: 16),
-            child: Text(
-              'No category budgets yet — tap + to add one.',
-              style: AppText.caption,
-            ),
+            child: Text('No category budgets yet — tap + to add one.',
+                style: AppText.caption),
           )
         else
-          ..._budgets.map(
-            (b) => _BudgetCard(budget: b, onTap: () => _editBudget(b)),
-          ),
+          ..._budgets
+              .map((b) => _BudgetCard(budget: b, onTap: () => _editBudget(b))),
         const SizedBox(height: 20),
         const Text('Savings Goal', style: AppText.sectionTitle),
         const SizedBox(height: 10),
         Container(
           padding: const EdgeInsets.all(18),
           decoration: BoxDecoration(
-            color: AppColors.surface,
-            borderRadius: BorderRadius.circular(16),
-            boxShadow: AppShadows.subtle,
-          ),
+              color: AppColors.surface,
+              borderRadius: BorderRadius.circular(16),
+              boxShadow: AppShadows.subtle),
           child: goal == null
               ? Column(
                   children: [
-                    const Text(
-                      'No savings goal set yet.',
-                      style: TextStyle(color: AppColors.textSecondary),
-                    ),
+                    const Text('No savings goal set yet.',
+                        style: TextStyle(color: AppColors.textSecondary)),
                     const SizedBox(height: 12),
                     ElevatedButton(
-                      onPressed: _editGoal,
-                      child: const Text('Create a goal'),
-                    ),
+                        onPressed: _editGoal,
+                        child: const Text('Create a goal')),
                   ],
                 )
               : InkWell(
@@ -537,29 +485,22 @@ class _BudgetPlannerScreenState extends State<BudgetPlannerScreen> {
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            Text(
-                              goal.goalName,
-                              style: const TextStyle(
-                                fontWeight: FontWeight.w700,
-                                fontSize: 14,
-                                color: AppColors.textPrimary,
-                              ),
-                            ),
+                            Text(goal.goalName,
+                                style: const TextStyle(
+                                    fontWeight: FontWeight.w700,
+                                    fontSize: 14,
+                                    color: AppColors.textPrimary)),
                             const SizedBox(height: 4),
                             Text(
-                              '${formatCurrency(goal.currentAmount)} of ${formatCurrency(goal.targetAmount)}',
-                              style: const TextStyle(
-                                fontSize: 12,
-                                color: AppColors.textSecondary,
-                              ),
-                            ),
+                                '${formatCurrency(goal.currentAmount)} of ${formatCurrency(goal.targetAmount)}',
+                                style: const TextStyle(
+                                    fontSize: 12,
+                                    color: AppColors.textSecondary)),
                           ],
                         ),
                       ),
-                      const Icon(
-                        Icons.chevron_right,
-                        color: AppColors.textMuted,
-                      ),
+                      const Icon(Icons.chevron_right,
+                          color: AppColors.textMuted),
                     ],
                   ),
                 ),
@@ -585,34 +526,28 @@ class _BudgetCard extends StatelessWidget {
         margin: const EdgeInsets.only(bottom: 10),
         padding: const EdgeInsets.all(14),
         decoration: BoxDecoration(
-          color: AppColors.surface,
-          borderRadius: BorderRadius.circular(14),
-          boxShadow: AppShadows.subtle,
-        ),
+            color: AppColors.surface,
+            borderRadius: BorderRadius.circular(14),
+            boxShadow: AppShadows.subtle),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
+                Text(budget.categoryName ?? 'Category',
+                    style: const TextStyle(
+                        fontWeight: FontWeight.w600,
+                        fontSize: 14,
+                        color: AppColors.textPrimary)),
                 Text(
-                  budget.categoryName ?? 'Category',
-                  style: const TextStyle(
-                    fontWeight: FontWeight.w600,
-                    fontSize: 14,
-                    color: AppColors.textPrimary,
-                  ),
-                ),
-                Text(
-                  '${formatCurrency(budget.spent)} / ${formatCurrency(budget.budgetAmount)}',
-                  style: TextStyle(
-                    fontSize: 12,
-                    fontWeight: FontWeight.w600,
-                    color: overBudget
-                        ? AppColors.expense
-                        : AppColors.textSecondary,
-                  ),
-                ),
+                    '${formatCurrency(budget.spent)} / ${formatCurrency(budget.budgetAmount)}',
+                    style: TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w600,
+                        color: overBudget
+                            ? AppColors.expense
+                            : AppColors.textSecondary)),
               ],
             ),
             const SizedBox(height: 8),
@@ -623,8 +558,7 @@ class _BudgetCard extends StatelessWidget {
                 minHeight: 6,
                 backgroundColor: AppColors.border,
                 valueColor: AlwaysStoppedAnimation(
-                  overBudget ? AppColors.expense : AppColors.primary,
-                ),
+                    overBudget ? AppColors.expense : AppColors.primary),
               ),
             ),
           ],
