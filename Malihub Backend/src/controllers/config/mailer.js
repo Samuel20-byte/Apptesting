@@ -1,20 +1,17 @@
-const nodemailer = require("nodemailer");
+const { Resend } = require("resend");
 
-// Reads from environment variables — set locally in .env for testing, and
-// on Railway as service variables, the same way JWT_SECRET is configured.
-// EMAIL_USER: the Gmail address itself (e.g. malihub.app@gmail.com)
-// EMAIL_APP_PASSWORD: the 16-character App Password (NOT the normal Gmail
-// login password) generated from https://myaccount.google.com/apppasswords
-const transporter = nodemailer.createTransport({
-  host: "smtp.gmail.com",
-  port: 587,
-  secure: false, // STARTTLS — port 465 (implicit SSL) is blocked on some hosts
-  family: 4, // force IPv4 — the IPv6 route appears unreachable on Railway
-  auth: {
-    user: process.env.EMAIL_USER,
-    pass: process.env.EMAIL_APP_PASSWORD,
-  },
-});
+// Railway blocks outbound SMTP (ports 465/587) with IPv6 ENETUNREACH errors,
+// so we send over Resend's HTTP API instead — same idea as JWT_SECRET, set
+// RESEND_API_KEY as a Railway service variable. Get a key from
+// https://resend.com/api-keys
+const resend = new Resend(process.env.RESEND_API_KEY);
+
+// Resend's shared sandbox address works without verifying your own domain,
+// but on the free tier it will only deliver to the email address you signed
+// up to Resend with — fine for an IBL demo. Once/if you verify a real
+// domain in Resend, set EMAIL_FROM to something like
+// "Malihub <noreply@yourdomain.com>" instead.
+const FROM_ADDRESS = process.env.EMAIL_FROM || "Malihub <onboarding@resend.dev>";
 
 /**
  * Sends the 6-digit password reset code to the user's email.
@@ -22,8 +19,8 @@ const transporter = nodemailer.createTransport({
  * (logging it server-side without leaking details to the client).
  */
 async function sendResetCodeEmail(toEmail, code) {
-  await transporter.sendMail({
-    from: `"Malihub" <${process.env.EMAIL_USER}>`,
+  const { error } = await resend.emails.send({
+    from: FROM_ADDRESS,
     to: toEmail,
     subject: "Your Malihub password reset code",
     text: `Your password reset code is ${code}. It expires in 15 minutes. If you didn't request this, you can safely ignore this email.`,
@@ -33,6 +30,10 @@ async function sendResetCodeEmail(toEmail, code) {
       <p>This code expires in 15 minutes. If you didn't request this, you can safely ignore this email.</p>
     `,
   });
+
+  if (error) {
+    throw new Error(error.message || "Resend failed to send email");
+  }
 }
 
 module.exports = { sendResetCodeEmail };
