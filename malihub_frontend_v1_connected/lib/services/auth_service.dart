@@ -54,6 +54,20 @@ class AuthService {
     });
   }
 
+  /// The code is single-use — the backend clears it once the password is
+  /// successfully changed — and expires 15 minutes after it was requested.
+  Future<void> resetPassword({
+    required String email,
+    required String code,
+    required String newPassword,
+  }) async {
+    await _client.post('/auth/reset-password', body: {
+      'email': email,
+      'code': code,
+      'new_password': newPassword,
+    });
+  }
+
   Future<bool> hasStoredSession() async {
     final t = await _client.token;
     return t != null && t.isNotEmpty;
