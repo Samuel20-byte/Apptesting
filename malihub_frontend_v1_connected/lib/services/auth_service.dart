@@ -44,6 +44,16 @@ class AuthService {
     return AuthResult(token, user);
   }
 
+  /// Backend always responds with the same generic message whether or not
+  /// the email is registered (so this endpoint can't be used to check which
+  /// emails exist) — a non-2xx response here means something like a
+  /// malformed email or a network/server problem, not "account not found".
+  Future<void> forgotPassword({required String email}) async {
+    await _client.post('/auth/forgot-password', body: {
+      'email': email,
+    });
+  }
+
   Future<bool> hasStoredSession() async {
     final t = await _client.token;
     return t != null && t.isNotEmpty;

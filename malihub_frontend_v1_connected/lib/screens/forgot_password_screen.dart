@@ -2,12 +2,13 @@ import 'package:flutter/material.dart';
 import '../theme/app_colors.dart';
 import '../widgets/app_text_field.dart';
 import '../widgets/malihub_logo.dart';
+import '../services/auth_service.dart';
+import '../services/api_exception.dart';
 
 /// Completes the "Forgot Password?" link from the login screen.
 ///
-/// TODO: wire to POST /api/auth/forgot-password with { email } once the
-/// backend supports it. That endpoint would typically email a reset link
-/// or code; for now this just shows a confirmation state after a delay.
+/// Calls POST /api/auth/forgot-password with { email }. The backend emails
+/// a 6-digit code (not a link) that expires in 15 minutes.
 class ForgotPasswordScreen extends StatefulWidget {
   const ForgotPasswordScreen({super.key});
 
@@ -18,6 +19,7 @@ class ForgotPasswordScreen extends StatefulWidget {
 class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
   final _formKey = GlobalKey<FormState>();
   final _emailController = TextEditingController();
+  final _authService = AuthService();
   bool _isLoading = false;
   bool _sent = false;
 
@@ -30,12 +32,25 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
   Future<void> _handleSend() async {
     if (!_formKey.currentState!.validate()) return;
     setState(() => _isLoading = true);
-    await Future.delayed(const Duration(milliseconds: 600));
-    if (!mounted) return;
-    setState(() {
-      _isLoading = false;
-      _sent = true;
-    });
+    try {
+      await _authService.forgotPassword(email: _emailController.text.trim());
+      if (!mounted) return;
+      setState(() {
+        _isLoading = false;
+        _sent = true;
+      });
+    } on ApiException catch (e) {
+      if (!mounted) return;
+      setState(() => _isLoading = false);
+      ScaffoldMessenger.of(context)
+          .showSnackBar(SnackBar(content: Text(e.message)));
+    } catch (_) {
+      if (!mounted) return;
+      setState(() => _isLoading = false);
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+          content: Text(
+              "Couldn't reach the server. Check your connection and try again.")));
+    }
   }
 
   @override
@@ -69,8 +84,8 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
               const SizedBox(height: 8),
               Text(
                 _sent
-                    ? 'If an account exists for that email, a reset link is on its way.'
-                    : "Enter the email tied to your account and we'll send you a link to reset your password.",
+                    ? 'If an account exists for that email, a reset code is on its way.'
+                    : "Enter the email tied to your account and we'll send you a code to reset your password.",
                 style: const TextStyle(fontSize: 14, color: AppColors.textSecondary, height: 1.5),
               ),
               const SizedBox(height: 28),
